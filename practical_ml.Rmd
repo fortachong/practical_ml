@@ -1,0 +1,213 @@
+# Report: Machine Learning: Prediction of activity tracking
+# Date: 2015/10/25
+# Name: Jorge Chong
+========================================================
+```{r, echo=FALSE, results='hide', error=FALSE,warning=FALSE, include=FALSE}
+require(ggplot2)
+require(caret)
+require(e1071)
+
+```
+
+## Introduction
+
+For this report we are going to train a model using data from a study called:
+
+*Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.* 
+
+Read more: [http://groupware.les.inf.puc-rio.br/har#ixzz3pb7Y1yRA] (http://groupware.les.inf.puc-rio.br/har#ixzz3pb7Y1yRA)
+
+The study is an attempt in human activity recognition research. The study data consists of data from 4 sensors (belt, arm, forearm, and dumbell) for four participants and tries to classify 5 types of activities: Sitting, Sitting down, Standing, Standing up, and Walking.
+
+## Processing the Data
+
+In the study is mentioned that data is collected during 8 hours of activities, 2 hours, each of the subjects. Data is generated in windows of 1 sec, with 150 ms overlapping. Every change in window there are added some statistics of the windows like mean, std, kurtosis, etc. It's a good idea to delete the rows with **new_window == no**
+
+```{r, echo=TRUE, results='hide', error=FALSE,warning=FALSE, include=FALSE}
+src_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(src_url, 
+              method="auto", 
+              destfile = "pml-training.csv")
+
+src_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(src_url, 
+              method="auto", 
+              destfile = "pml-testing.csv")
+
+pml_training <- read.csv("pml-training.csv")
+pml_testing <- read.csv("pml-testing.csv")
+
+tmp_training <- pml_training[pml_training$new_window == "no",]
+tmp_testing <- pml_testing[pml_testing$new_window == "no",]
+
+```
+
+## Feature Selection
+
+We have to delete all columns that refer to window statistics. Also the study specifies that they used a feature selection algorithm: Mark Hall's selection algorithm, which is based in correlation. Based on features selected in the study, we will select this features:
+
+* roll_belt
+* pitch_belt
+* yaw_belt
+* accel_belt_x
+* accel_belt_y
+* accel_belt_z
+* roll_arm
+* pitch_arm
+* yaw_arm
+* accel_arm_x
+* accel_arm_y
+* accel_arm_z
+* roll_dumbbell
+* pitch_dumbbell
+* yaw_dumbbell
+* accel_dumbbell_x
+* accel_dumbbell_y
+* accel_dumbbell_z
+* roll_forearm
+* pitch_forearm
+* yaw_forearm
+* accel_forearm_x
+* accel_forearm_y
+* accel_forearm_z
+
+Notice that the study selects the module of acceleration for some sensors, but we will use the x, y, z components directly to train the model
+
+```{r, echo=TRUE}
+c_training <- c("roll_belt",
+                "pitch_belt",
+                "yaw_belt",
+                "accel_belt_x",
+                "accel_belt_y",
+                "accel_belt_z",
+                "roll_arm",
+                "pitch_arm",
+                "yaw_arm",
+                "accel_arm_x",
+                "accel_arm_y",
+                "accel_arm_z",
+                "roll_dumbbell",
+                "pitch_dumbbell",
+                "yaw_dumbbell",
+                "accel_dumbbell_x",
+                "accel_dumbbell_y",
+                "accel_dumbbell_z",
+                "roll_forearm",
+                "pitch_forearm",
+                "yaw_forearm",
+                "accel_forearm_x",
+                "accel_forearm_y",
+                "accel_forearm_z",
+                "classe"
+                )
+
+c_testing <- c("roll_belt",
+                "pitch_belt",
+                "yaw_belt",
+                "accel_belt_x",
+                "accel_belt_y",
+                "accel_belt_z",
+                "roll_arm",
+                "pitch_arm",
+                "yaw_arm",
+                "accel_arm_x",
+                "accel_arm_y",
+                "accel_arm_z",
+                "roll_dumbbell",
+                "pitch_dumbbell",
+                "yaw_dumbbell",
+                "accel_dumbbell_x",
+                "accel_dumbbell_y",
+                "accel_dumbbell_z",
+                "roll_forearm",
+                "pitch_forearm",
+                "yaw_forearm",
+                "accel_forearm_x",
+                "accel_forearm_y",
+                "accel_forearm_z"
+                )
+
+tmp_training <- tmp_training[,c_training]
+tmp_testing <- tmp_testing[,c_testing]
+
+```
+
+Also we check for further covariates:
+
+```{r, echo=TRUE}
+
+n <- nearZeroVar(tmp_training, saveMetrics= TRUE)
+print(n)
+
+```
+
+
+## Model selection
+
+First we use a partition of 75% for training and 25% for testing, and specify a training control using repeated k-fold cross validation, where k = 4 and two repetitions per fold.
+
+```{r, echo=TRUE}
+
+inTraining <- createDataPartition(tmp_training$classe, p = .75, list = FALSE)
+training <- tmp_training[inTraining, ]
+testing <- tmp_training[-inTraining, ]
+control <- trainControl(method = "repeatedcv", number = 4, repeats = 2)
+
+
+```
+
+Our first model will be a decision tree using rpart.
+
+```{r, echo=TRUE}
+knitr::opts_chunk$set(cache=TRUE)
+set.seed(3923)
+model1 <- train(classe~., data = training, trControl = control, method = "rpart")
+print(model1, digits=3)
+print(model1$finalModel, digits=3)
+plot(model1)
+plot(model1$finalModel, uniform=TRUE, 
+    main="Model 1")
+text(model1$finalModel, use.n=TRUE, all=TRUE, cex=.5)
+
+
+```
+
+Using our testing subset:
+```{r, echo=TRUE}
+pred1 <- predict(model1, newdata = testing)
+print(confusionMatrix(pred1, testing$classe), digits=3)
+
+```
+
+The estimate of the accuracy is pretty low. To improve this, we will use the random forest algorithm for the second model:
+
+```{r, echo=TRUE}
+knitr::opts_chunk$set(cache=TRUE)
+set.seed(3923)
+model2 <- train(classe ~ ., data=training, method="rf", trControl=control, verbose=TRUE)
+print(model2, digits=3)
+plot(model2)
+
+```
+
+And using our testing subset:
+
+```{r, echo=TRUE}
+pred2 <- predict(model2, newdata = testing)
+cf <- confusionMatrix(pred2, testing$classe)
+print(cf, digits = 3)
+
+```
+
+This give us an improved accuracy of **`r round(cf$overall[[1]], digits=3)`**, therefore our best estimate of the out of sample error is **`r round(1 - cf$overall[[1]], digits=3)`**
+
+With this model, we find our prediction for the 20 cases in the dataset provided:
+
+```{r, echo=TRUE}
+print(predict(model2, newdata=tmp_testing))
+
+```
+
+## Conclusion
+
+Training the dataset with the random forest algorithm we get a pretty accurate estimate.
